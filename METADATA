@@ -1,0 +1,15 @@
+name: "google-highway"
+description:
+  "Performance-portable, length-agnostic SIMD with runtime dispatch"
+
+third_party {
+  identifier {
+    type: "Git"
+    value: "https://github.com/google/highway"
+    primary_source: true
+    version: "1.2.0"
+  }
+  version: "1.2.0"
+  license_type: NOTICE
+  last_upgrade_date { year: 2025 month: 5 day: 19 }
+}
