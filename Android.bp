@@ -15,6 +15,21 @@ license {
     ],
 }
 
+cc_library_headers {
+    name: "hwy_headers_only",
+    host_supported: true,
+    export_include_dirs: [
+        ".",
+    ],
+    visibility: [
+        "//bionic:__subpackages__",
+    ],
+    stl: "none",
+    native_bridge_supported: true,
+    system_shared_libs: [],
+    apex_available: ["com.android.runtime"],
+}
+
 cc_library {
     name: "libhwy",
     host_supported: true,
