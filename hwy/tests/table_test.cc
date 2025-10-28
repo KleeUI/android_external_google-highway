@@ -24,7 +24,6 @@
 HWY_BEFORE_NAMESPACE();
 namespace hwy {
 namespace HWY_NAMESPACE {
-namespace {
 
 struct TestTableLookupLanes {
   template <class T, class D>
@@ -194,20 +193,18 @@ HWY_NOINLINE void TestAllTwoTablesLookupLanes() {
   ForAllTypes(ForPartialVectors<TestTwoTablesLookupLanes>());
 }
 
-}  // namespace
 // NOLINTNEXTLINE(google-readability-namespace-comments)
 }  // namespace HWY_NAMESPACE
 }  // namespace hwy
 HWY_AFTER_NAMESPACE();
 
 #if HWY_ONCE
+
 namespace hwy {
-namespace {
 HWY_BEFORE_TEST(HwyTableTest);
 HWY_EXPORT_AND_TEST_P(HwyTableTest, TestAllTableLookupLanes);
 HWY_EXPORT_AND_TEST_P(HwyTableTest, TestAllTwoTablesLookupLanes);
 HWY_AFTER_TEST();
-}  // namespace
 }  // namespace hwy
-HWY_TEST_MAIN();
-#endif  // HWY_ONCE
+
+#endif

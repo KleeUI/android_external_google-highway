@@ -16,6 +16,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <cmath>  // std::isfinite
+
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "tests/demote_test.cc"
 #include "hwy/foreach_target.h"  // IWYU pragma: keep
@@ -28,7 +30,6 @@
 HWY_BEFORE_NAMESPACE();
 namespace hwy {
 namespace HWY_NAMESPACE {
-namespace {
 
 template <typename ToT>
 struct TestDemoteTo {
@@ -51,7 +52,8 @@ struct TestDemoteTo {
     RandomState rng;
     for (size_t rep = 0; rep < AdjustedReps(1000); ++rep) {
       for (size_t i = 0; i < N; ++i) {
-        from[i] = RandomFiniteValue<T>(&rng);
+        const uint64_t bits = rng();
+        CopyBytes<sizeof(T)>(&bits, &from[i]);  // not same size
         expected[i] = static_cast<ToT>(HWY_MIN(HWY_MAX(min, from[i]), max));
       }
       const auto in = Load(from_d, from.get());
@@ -817,7 +819,6 @@ HWY_NOINLINE void TestAllI32F64() {
 #endif
 }
 
-}  // namespace
 // NOLINTNEXTLINE(google-readability-namespace-comments)
 }  // namespace HWY_NAMESPACE
 }  // namespace hwy
@@ -826,8 +827,8 @@ HWY_AFTER_NAMESPACE();
 #endif  //  !HWY_IS_MSAN
 
 #if HWY_ONCE
+
 namespace hwy {
-namespace {
 #if !HWY_IS_MSAN
 HWY_BEFORE_TEST(HwyDemoteTest);
 HWY_EXPORT_AND_TEST_P(HwyDemoteTest, TestAllDemoteToInt);
@@ -840,7 +841,6 @@ HWY_EXPORT_AND_TEST_P(HwyDemoteTest, TestAllOrderedDemote2To);
 HWY_EXPORT_AND_TEST_P(HwyDemoteTest, TestAllI32F64);
 HWY_AFTER_TEST();
 #endif  //  !HWY_IS_MSAN
-}  // namespace
 }  // namespace hwy
-HWY_TEST_MAIN();
-#endif  // HWY_ONCE
+
+#endif

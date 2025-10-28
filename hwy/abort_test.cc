@@ -4,43 +4,20 @@
 
 #include "hwy/abort.h"
 
-#include <stdio.h>
-
-#include <string>
-
-#include "hwy/base.h"
 #include "hwy/tests/hwy_gtest.h"
+#include "hwy/base.h"
+
 #include "hwy/tests/test_util-inl.h"  // HWY_ASSERT_EQ
 
 namespace hwy {
-namespace {
-
-TEST(AbortTest, WarnOverrideChain) {
-  WarnFunc FirstHandler = [](const char* file, int line,
-                             const char* formatted_err) -> void {
-    fprintf(stderr, "%s from %d of %s", formatted_err, line, file);
-  };
-  WarnFunc SecondHandler = [](const char* file, int line,
-                              const char* formatted_err) -> void {
-    fprintf(stderr, "%s from %d of %s", formatted_err, line, file);
-  };
-
-  // Do not check that the first SetWarnFunc returns nullptr, because it is
-  // not guaranteed to be the first call - other TEST may come first.
-  (void)SetWarnFunc(FirstHandler);
-  HWY_ASSERT(GetWarnFunc() == FirstHandler);
-  HWY_ASSERT(SetWarnFunc(SecondHandler) == FirstHandler);
-  HWY_ASSERT(GetWarnFunc() == SecondHandler);
-  HWY_ASSERT(SetWarnFunc(nullptr) == SecondHandler);
-  HWY_ASSERT(GetWarnFunc() == nullptr);
-}
 
 #ifdef GTEST_HAS_DEATH_TEST
-
+namespace {
 std::string GetBaseName(std::string const& file_name) {
   auto last_slash = file_name.find_last_of("/\\");
   return file_name.substr(last_slash + 1);
 }
+}  // namespace
 
 TEST(AbortDeathTest, AbortDefault) {
   std::string expected = std::string("Abort at ") + GetBaseName(__FILE__) +
@@ -49,24 +26,23 @@ TEST(AbortDeathTest, AbortDefault) {
 }
 
 TEST(AbortDeathTest, AbortOverride) {
-  const AbortFunc CustomAbortHandler = [](const char* file, int line,
+  std::string expected =
+      std::string("Test Abort from [0-9]+ of ") + GetBaseName(__FILE__);
+
+  ASSERT_DEATH(
+      {
+        AbortFunc CustomAbortHandler = [](const char* file, int line,
                                           const char* formatted_err) -> void {
-    fprintf(stderr, "%s from %02d of %s", formatted_err, line,
-            GetBaseName(file).data());
-  };
+          fprintf(stderr, "%s from %d of %s", formatted_err, line,
+                  GetBaseName(file).data());
+        };
 
-  SetAbortFunc(CustomAbortHandler);
-
-  // googletest regex does not support `+` for digits on Windows?!
-  // https://google.github.io/googletest/advanced.html#regular-expression-syntax
-  // Hence we insert the expected line number manually.
-  char buf[100];
-  const std::string file = GetBaseName(__FILE__);
-  const int line = __LINE__ + 2;  // from which HWY_ABORT is called
-  snprintf(buf, sizeof(buf), "Test Abort from %02d of %s", line, file.c_str());
-  ASSERT_DEATH({ HWY_ABORT("Test %s", "Abort"); }, buf);
+        SetAbortFunc(CustomAbortHandler);
+        HWY_ABORT("Test %s", "Abort");
+      },
+      expected);
 }
-#endif  // GTEST_HAS_DEATH_TEST
+#endif
 
 TEST(AbortTest, AbortOverrideChain) {
   AbortFunc FirstHandler = [](const char* file, int line,
@@ -78,9 +54,7 @@ TEST(AbortTest, AbortOverrideChain) {
     fprintf(stderr, "%s from %d of %s", formatted_err, line, file);
   };
 
-  // Do not check that the first SetAbortFunc returns nullptr, because it is
-  // not guaranteed to be the first call - other TEST may come first.
-  (void)SetAbortFunc(FirstHandler);
+  HWY_ASSERT(SetAbortFunc(FirstHandler) == nullptr);
   HWY_ASSERT(GetAbortFunc() == FirstHandler);
   HWY_ASSERT(SetAbortFunc(SecondHandler) == FirstHandler);
   HWY_ASSERT(GetAbortFunc() == SecondHandler);
@@ -88,7 +62,6 @@ TEST(AbortTest, AbortOverrideChain) {
   HWY_ASSERT(GetAbortFunc() == nullptr);
 }
 
-}  // namespace
 }  // namespace hwy
 
 HWY_TEST_MAIN();

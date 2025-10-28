@@ -1,9 +1,3 @@
-build
-bazel-bin
-bazel-highway
-bazel-out
-bazel-testlogs
-MODULE.bazel.lock
 docs/g3doc/*
 docs/html/*
 docs/md/*

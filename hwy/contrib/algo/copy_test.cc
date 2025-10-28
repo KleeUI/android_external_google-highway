@@ -37,7 +37,6 @@
 HWY_BEFORE_NAMESPACE();
 namespace hwy {
 namespace HWY_NAMESPACE {
-namespace {
 
 // Returns random integer in [0, 128), which fits in any lane type.
 template <typename T>
@@ -169,8 +168,8 @@ struct TestCopyIf {
     }
 
 #if HWY_GENERIC_LAMBDA
-    const auto is_odd = [](const auto d2, const auto v) HWY_ATTR {
-      return TestBit(v, Set(d2, TFromD<decltype(d2)>{1}));
+    const auto is_odd = [](const auto d, const auto v) HWY_ATTR {
+      return TestBit(v, Set(d, TFromD<decltype(d)>{1}));
     };
 #else
     const IsOdd is_odd;
@@ -190,21 +189,19 @@ void TestAllCopyIf() {
   ForUI163264(ForPartialVectors<ForeachCountAndMisalign<TestCopyIf>>());
 }
 
-}  // namespace
 // NOLINTNEXTLINE(google-readability-namespace-comments)
 }  // namespace HWY_NAMESPACE
 }  // namespace hwy
 HWY_AFTER_NAMESPACE();
 
 #if HWY_ONCE
+
 namespace hwy {
-namespace {
 HWY_BEFORE_TEST(CopyTest);
 HWY_EXPORT_AND_TEST_P(CopyTest, TestAllFill);
 HWY_EXPORT_AND_TEST_P(CopyTest, TestAllCopy);
 HWY_EXPORT_AND_TEST_P(CopyTest, TestAllCopyIf);
 HWY_AFTER_TEST();
-}  // namespace
 }  // namespace hwy
-HWY_TEST_MAIN();
-#endif  // HWY_ONCE
+
+#endif

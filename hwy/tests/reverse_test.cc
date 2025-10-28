@@ -24,7 +24,6 @@
 HWY_BEFORE_NAMESPACE();
 namespace hwy {
 namespace HWY_NAMESPACE {
-namespace {
 
 struct TestReverse {
   template <class T, class D>
@@ -285,15 +284,14 @@ HWY_NOINLINE void TestAllReverseBlocks() {
   ForAllTypes(ForGEVectors<128, TestReverseBlocks>());
 }
 
-}  // namespace
 // NOLINTNEXTLINE(google-readability-namespace-comments)
 }  // namespace HWY_NAMESPACE
 }  // namespace hwy
 HWY_AFTER_NAMESPACE();
 
 #if HWY_ONCE
+
 namespace hwy {
-namespace {
 HWY_BEFORE_TEST(HwyReverseTest);
 HWY_EXPORT_AND_TEST_P(HwyReverseTest, TestAllReverse);
 HWY_EXPORT_AND_TEST_P(HwyReverseTest, TestAllReverse2);
@@ -303,7 +301,6 @@ HWY_EXPORT_AND_TEST_P(HwyReverseTest, TestAllReverseLaneBytes);
 HWY_EXPORT_AND_TEST_P(HwyReverseTest, TestAllReverseBits);
 HWY_EXPORT_AND_TEST_P(HwyReverseTest, TestAllReverseBlocks);
 HWY_AFTER_TEST();
-}  // namespace
 }  // namespace hwy
-HWY_TEST_MAIN();
-#endif  // HWY_ONCE
+
+#endif
