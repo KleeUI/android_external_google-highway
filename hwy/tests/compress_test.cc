@@ -28,7 +28,6 @@
 HWY_BEFORE_NAMESPACE();
 namespace hwy {
 namespace HWY_NAMESPACE {
-namespace {
 
 // Regenerate tables used in the implementation, instead of testing.
 #define HWY_PRINT_TABLES 0
@@ -254,6 +253,8 @@ HWY_NOINLINE void TestAllCompressBlocks() {
 #endif  // !HWY_PRINT_TABLES
 
 #if HWY_PRINT_TABLES || HWY_IDE
+namespace detail {  // for code folding
+
 void PrintCompress8x8Tables() {
   printf("======================================= 8x8\n");
   constexpr size_t N = 8;
@@ -782,39 +783,40 @@ void PrintCompressNot64x2Tables() {
   printf("\n");
 }
 
+}  // namespace detail
+
 HWY_NOINLINE void PrintTables() {
   // Only print once.
 #if HWY_TARGET == HWY_STATIC_TARGET
-  PrintCompress32x8Tables();
-  PrintCompressNot32x8Tables();
-  PrintCompress64x4NibbleTables();
-  PrintCompressNot64x4NibbleTables();
-  PrintCompressNot64x2NibbleTables();
-  PrintCompress64x4Tables();
-  PrintCompressNot64x4Tables();
-  PrintCompress32x4Tables();
-  PrintCompressNot32x4Tables();
-  PrintCompress64x2Tables();
-  PrintCompressNot64x2Tables();
-  PrintCompress64x4PairTables();
-  PrintCompressNot64x4PairTables();
-  PrintCompress16x8Tables();
-  PrintCompress8x8Tables();
-  PrintCompressNot16x8Tables();
+  detail::PrintCompress32x8Tables();
+  detail::PrintCompressNot32x8Tables();
+  detail::PrintCompress64x4NibbleTables();
+  detail::PrintCompressNot64x4NibbleTables();
+  detail::PrintCompressNot64x2NibbleTables();
+  detail::PrintCompress64x4Tables();
+  detail::PrintCompressNot64x4Tables();
+  detail::PrintCompress32x4Tables();
+  detail::PrintCompressNot32x4Tables();
+  detail::PrintCompress64x2Tables();
+  detail::PrintCompressNot64x2Tables();
+  detail::PrintCompress64x4PairTables();
+  detail::PrintCompressNot64x4PairTables();
+  detail::PrintCompress16x8Tables();
+  detail::PrintCompress8x8Tables();
+  detail::PrintCompressNot16x8Tables();
 #endif
 }
 
 #endif  // HWY_PRINT_TABLES
 
-}  // namespace
 // NOLINTNEXTLINE(google-readability-namespace-comments)
 }  // namespace HWY_NAMESPACE
 }  // namespace hwy
 HWY_AFTER_NAMESPACE();
 
 #if HWY_ONCE
+
 namespace hwy {
-namespace {
 HWY_BEFORE_TEST(HwyCompressTest);
 #if HWY_PRINT_TABLES
 // Only print instead of running tests; this will be visible in the log.
@@ -824,7 +826,6 @@ HWY_EXPORT_AND_TEST_P(HwyCompressTest, TestAllCompress);
 HWY_EXPORT_AND_TEST_P(HwyCompressTest, TestAllCompressBlocks);
 #endif
 HWY_AFTER_TEST();
-}  // namespace
 }  // namespace hwy
-HWY_TEST_MAIN();
-#endif  // HWY_ONCE
+
+#endif

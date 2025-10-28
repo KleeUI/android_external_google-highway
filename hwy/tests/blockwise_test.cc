@@ -25,7 +25,6 @@
 HWY_BEFORE_NAMESPACE();
 namespace hwy {
 namespace HWY_NAMESPACE {
-namespace {
 
 template <typename D, int kLane>
 struct TestBroadcastR {
@@ -122,6 +121,7 @@ struct TestTableLookupBytes {
       // Avoid asan error for partial vectors.
       index_bytes[i] = static_cast<uint8_t>(HWY_MIN(index_bytes[i], max_index));
     }
+    const Vec<D> indices_v = Load(d, indices.get());
 
     uint8_t* expected_bytes = reinterpret_cast<uint8_t*>(expected.get());
 
@@ -138,10 +138,7 @@ struct TestTableLookupBytes {
             in_bytes[(block + index) % HWY_MIN(NT8, 256)];
       }
     }
-    {
-      const Vec<D> indices_v = Load(d, indices.get());
-      HWY_ASSERT_VEC_EQ(d, expected.get(), TableLookupBytes(in, indices_v));
-    }
+    HWY_ASSERT_VEC_EQ(d, expected.get(), TableLookupBytes(in, indices_v));
 
     // Individually test zeroing each byte position.
     for (size_t i = 0; i < N8; ++i) {
@@ -497,15 +494,14 @@ HWY_NOINLINE void TestAllSpecialShuffles() {
 #endif
 }
 
-}  // namespace
 // NOLINTNEXTLINE(google-readability-namespace-comments)
 }  // namespace HWY_NAMESPACE
 }  // namespace hwy
 HWY_AFTER_NAMESPACE();
 
 #if HWY_ONCE
+
 namespace hwy {
-namespace {
 HWY_BEFORE_TEST(HwyBlockwiseTest);
 HWY_EXPORT_AND_TEST_P(HwyBlockwiseTest, TestAllBroadcast);
 HWY_EXPORT_AND_TEST_P(HwyBlockwiseTest, TestAllTableLookupBytesSame);
@@ -517,7 +513,6 @@ HWY_EXPORT_AND_TEST_P(HwyBlockwiseTest, TestAllZipUpper);
 #endif
 HWY_EXPORT_AND_TEST_P(HwyBlockwiseTest, TestAllSpecialShuffles);
 HWY_AFTER_TEST();
-}  // namespace
 }  // namespace hwy
-HWY_TEST_MAIN();
-#endif  // HWY_ONCE
+
+#endif

@@ -31,10 +31,14 @@
 #include "hwy/contrib/sort/traits-inl.h"
 #include "hwy/contrib/sort/traits128-inl.h"
 #include "hwy/tests/test_util-inl.h"
-#include "hwy/nanobenchmark.h"
+#include "hwy/timer-inl.h"
 #include "hwy/timer.h"
-#include "hwy/contrib/thread_pool/futex.h"  // NanoSleep
+#include "hwy/per_target.h"
 // clang-format on
+
+#if HWY_OS_LINUX
+#include <unistd.h>  // usleep
+#endif
 
 // Mode for larger sorts because M1 is able to access more than the per-core
 // share of L2, so 1M elements might still be in cache.
@@ -60,11 +64,11 @@ using detail::OrderDescending;
 using detail::SharedTraits;
 using detail::TraitsLane;
 
-#if HWY_TARGET != HWY_SCALAR
+#if VQSORT_ENABLED
 using detail::OrderAscending128;
 using detail::OrderAscendingKV128;
 using detail::Traits128;
-#endif  // HWY_TARGET != HWY_SCALAR
+#endif  // VQSORT_ENABLED
 
 HWY_NOINLINE void BenchAllColdSort() {
   // Only run the best(first) enabled target
@@ -75,7 +79,8 @@ HWY_NOINLINE void BenchAllColdSort() {
 
   char cpu100[100];
   if (!platform::HaveTimerStop(cpu100)) {
-    HWY_WARN("CPU '%s' does not support RDTSCP, skipping benchmark.\n", cpu100);
+    fprintf(stderr, "CPU '%s' does not support RDTSCP, skipping benchmark.\n",
+            cpu100);
     return;
   }
 
@@ -113,12 +118,11 @@ HWY_NOINLINE void BenchAllColdSort() {
   items[Random32(&rng) % kSize] = static_cast<T>(Unpredictable1() + 1);
 
   const timer::Ticks t0 = timer::Start();
-  const SortAscending order;
 #if VQSORT_ENABLED && 1  // change to && 0 to switch to std::sort.
-  VQSort(items, kSize, order);
+  VQSort(items, kSize, SortAscending());
 #else
   SharedState shared;
-  Run(Algo::kStdSort, items, kSize, shared, /*thread=*/0, /*k_keys=*/0, order);
+  Run<SortAscending>(Algo::kStdSort, items, kSize, shared, /*thread=*/0);
 #endif
   const timer::Ticks t1 = timer::Stop();
 
@@ -130,8 +134,10 @@ HWY_NOINLINE void BenchAllColdSort() {
           elapsed * 1E9, static_cast<double>(items[Random32(&rng) % kSize]));
 
 #if SORT_ONLY_COLD
+#if HWY_OS_LINUX
   // Long enough for the CPU to switch off AVX-512 mode before the next run.
-  NanoSleep(100 * 1000 * 1000);
+  usleep(100 * 1000);  // NOLINT
+#endif
 #endif
 }
 
@@ -177,8 +183,8 @@ HWY_NOINLINE void BenchPartition() {
       sum += static_cast<double>(aligned.get()[num_lanes / 2]);
     }
 
-    SortResult(Algo::kVQSort, dist, num_keys, 1, SummarizeMeasurements(seconds),
-               sizeof(KeyType), st.KeyString())
+    Result(Algo::kVQSort, dist, num_keys, 1, SummarizeMeasurements(seconds),
+           sizeof(KeyType), st.KeyString())
         .Print();
   }
   HWY_ASSERT(sum != 999999);  // Prevent optimizing out
@@ -199,7 +205,7 @@ HWY_NOINLINE void BenchAllPartition() {
 }
 
 template <class Traits>
-HWY_NOINLINE void BenchBase(std::vector<SortResult>& results) {
+HWY_NOINLINE void BenchBase(std::vector<Result>& results) {
   // Not interested in benchmark results for these targets
   if (HWY_TARGET == HWY_SSSE3 || HWY_TARGET == HWY_SSE4) {
     return;
@@ -210,7 +216,6 @@ HWY_NOINLINE void BenchBase(std::vector<SortResult>& results) {
   const SortTag<LaneType> d;
   detail::SharedTraits<Traits> st;
   const Dist dist = Dist::kUniform32;
-  const Algo algo = Algo::kVQSort;
 
   const size_t N = Lanes(d);
   constexpr size_t kLPK = st.LanesPerKey();
@@ -235,11 +240,10 @@ HWY_NOINLINE void BenchBase(std::vector<SortResult>& results) {
     seconds.push_back(SecondsSince(t0));
     // printf("%f\n", seconds.back());
 
-    SortOrderVerifier<Traits>()(algo, input_stats, keys.get(), num_keys,
-                                num_keys);
+    HWY_ASSERT(VerifySort(st, input_stats, keys.get(), num_lanes, "BenchBase"));
   }
   HWY_ASSERT(sum < 1E99);
-  results.emplace_back(algo, dist, num_keys * kMul, 1,
+  results.emplace_back(Algo::kVQSort, dist, num_keys * kMul, 1,
                        SummarizeMeasurements(seconds), sizeof(KeyType),
                        st.KeyString());
 }
@@ -250,11 +254,11 @@ HWY_NOINLINE void BenchAllBase() {
     return;
   }
 
-  std::vector<SortResult> results;
+  std::vector<Result> results;
   BenchBase<TraitsLane<OrderAscending<float>>>(results);
   BenchBase<TraitsLane<OrderDescending<int64_t>>>(results);
   BenchBase<Traits128<OrderAscending128>>(results);
-  for (const SortResult& r : results) {
+  for (const Result& r : results) {
     r.Print();
   }
 }
@@ -331,16 +335,16 @@ HWY_NOINLINE void BenchSort(size_t num_keys) {
             GenerateInput(dist, aligned.get(), num_lanes);
 
         const Timestamp t0;
-        Run(algo, HWY_RCAST_ALIGNED(KeyType*, aligned.get()), num_keys, shared,
-            /*thread=*/0, /*k_keys=*/0, Order());
+        Run<Order>(algo, HWY_RCAST_ALIGNED(KeyType*, aligned.get()), num_keys,
+                   shared, /*thread=*/0);
         seconds.push_back(SecondsSince(t0));
         // printf("%f\n", seconds.back());
 
-        SortOrderVerifier<Traits>()(algo, input_stats, aligned.get(), num_keys,
-                                    num_keys);
+        HWY_ASSERT(
+            VerifySort(st, input_stats, aligned.get(), num_lanes, "BenchSort"));
       }
-      SortResult(algo, dist, num_keys, 1, SummarizeMeasurements(seconds),
-                 sizeof(KeyType), st.KeyString())
+      Result(algo, dist, num_keys, 1, SummarizeMeasurements(seconds),
+             sizeof(KeyType), st.KeyString())
           .Print();
     }  // dist
   }    // algo
@@ -438,7 +442,7 @@ HWY_NOINLINE void BenchAllSort() {
     // BenchSort<TraitsLane<OtherOrder<uint32_t>>>(num_keys);
     // BenchSort<TraitsLane<OrderAscending<uint64_t>>>(num_keys);
 
-#if !HAVE_VXSORT && !HAVE_INTEL && HWY_TARGET != HWY_SCALAR
+#if !HAVE_VXSORT && !HAVE_INTEL && VQSORT_ENABLED
     BenchSort<Traits128<OrderAscending128>>(num_keys);
     BenchSort<Traits128<OrderAscendingKV128>>(num_keys);
 #endif
@@ -468,7 +472,5 @@ HWY_EXPORT_AND_TEST_P(BenchSort, BenchAllSort);
 #endif
 HWY_AFTER_TEST();
 }  // namespace hwy
-
-HWY_TEST_MAIN();
 
 #endif  // HWY_ONCE

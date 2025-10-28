@@ -21,21 +21,18 @@
 #include "hwy/tests/hwy_gtest.h"
 #include "hwy/tests/test_util-inl.h"
 
-// Simulate another project having its own namespace.
 namespace fake {
-namespace {
 
 #define DECLARE_FUNCTION(TGT)                                                \
   namespace N_##TGT {                                                        \
     /* Function argument is just to ensure/demonstrate they are possible. */ \
-    HWY_MAYBE_UNUSED int64_t FakeFunction(int) { return HWY_##TGT; }         \
+    int64_t FakeFunction(int) { return HWY_##TGT; }                          \
     template <typename T>                                                    \
     int64_t FakeFunctionT(T) {                                               \
       return HWY_##TGT;                                                      \
     }                                                                        \
   }
 
-DECLARE_FUNCTION(AVX10_2)
 DECLARE_FUNCTION(AVX3_SPR)
 DECLARE_FUNCTION(AVX3_ZEN4)
 DECLARE_FUNCTION(AVX3_DL)
@@ -64,9 +61,6 @@ DECLARE_FUNCTION(WASM)
 DECLARE_FUNCTION(WASM_EMU256)
 
 DECLARE_FUNCTION(RVV)
-
-DECLARE_FUNCTION(LASX)
-DECLARE_FUNCTION(LSX)
 
 DECLARE_FUNCTION(SCALAR)
 DECLARE_FUNCTION(EMU128)
@@ -138,10 +132,6 @@ void CheckFakeFunction() {
   CallFunctionForTarget(HWY_WASM_EMU256, __LINE__);
 
   CallFunctionForTarget(HWY_RVV, __LINE__);
-
-  CallFunctionForTarget(HWY_LASX, __LINE__);
-  CallFunctionForTarget(HWY_LSX, __LINE__);
-
   // The tables only have space for either HWY_SCALAR or HWY_EMU128; the former
   // is opt-in only.
 #if defined(HWY_COMPILE_ONLY_SCALAR) || HWY_BROKEN_EMU128
@@ -151,11 +141,9 @@ void CheckFakeFunction() {
 #endif
 }
 
-}  // namespace
 }  // namespace fake
 
 namespace hwy {
-namespace {
 
 #if !HWY_TEST_STANDALONE
 class HwyTargetsTest : public testing::Test {};
@@ -191,7 +179,6 @@ TEST(HwyTargetsTest, DisabledTargetsTest) {
   DisableTargets(0);  // Reset the mask.
 }
 
-}  // namespace
 }  // namespace hwy
 
 HWY_TEST_MAIN();

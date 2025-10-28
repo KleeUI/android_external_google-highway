@@ -24,7 +24,6 @@
 HWY_BEFORE_NAMESPACE();
 namespace hwy {
 namespace HWY_NAMESPACE {
-namespace {
 
 class TestPer4LaneBlockShuffle {
  private:
@@ -214,19 +213,17 @@ HWY_NOINLINE void TestAllPer4LaneBlockShuffle() {
   ForAllTypes(ForPartialFixedOrFullScalableVectors<TestPer4LaneBlockShuffle>());
 }
 
-}  // namespace
 // NOLINTNEXTLINE(google-readability-namespace-comments)
 }  // namespace HWY_NAMESPACE
 }  // namespace hwy
 HWY_AFTER_NAMESPACE();
 
 #if HWY_ONCE
+
 namespace hwy {
-namespace {
 HWY_BEFORE_TEST(HwyShuffle4Test);
 HWY_EXPORT_AND_TEST_P(HwyShuffle4Test, TestAllPer4LaneBlockShuffle);
 HWY_AFTER_TEST();
-}  // namespace
 }  // namespace hwy
-HWY_TEST_MAIN();
-#endif  // HWY_ONCE
+
+#endif
