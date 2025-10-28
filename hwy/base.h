@@ -22,8 +22,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #if defined(HWY_HEADER_ONLY)
-#include <stdarg.h>
-#include <stdio.h>
+#include <cstdarg>
+#include <cstdio>
 #endif
 
 #if !defined(HWY_NO_LIBCXX)
