@@ -21,6 +21,8 @@
 #include <string.h>
 
 #include <cmath>  // std::isnan
+#include <iomanip>
+#include <sstream>
 #include <string>
 
 #include "hwy/base.h"
@@ -156,6 +158,24 @@ TU ComputeUlpDelta(const T expected, const T actual) {
   return ulp;
 }
 
+template <typename T>
+std::string FormatMismatchedArrays(const T* expected, const T* actual,
+                                   size_t count, double tolerance) {
+  std::stringstream out;
+  const int precision =
+      std::max(6, static_cast<int>(std::ceil(-std::log10(tolerance))) + 2);
+  out << std::setprecision(precision);
+  out << "\nMismatch:\nExpected:";
+  for (size_t i = 0; i < count; ++i) {
+    out << " " << ConvertScalarTo<double>(expected[i]);
+  }
+  out << "\nActual:  ";
+  for (size_t i = 0; i < count; ++i) {
+    out << " " << ConvertScalarTo<double>(actual[i]);
+  }
+  return out.str();
+}
+
 HWY_TEST_DLLEXPORT bool IsEqual(const TypeInfo& info, const void* expected_ptr,
                                 const void* actual_ptr);
 
@@ -172,12 +192,21 @@ HWY_TEST_DLLEXPORT void AssertArrayEqual(const TypeInfo& info,
 
 }  // namespace detail
 
+#if HWY_ARCH_ARM_A64 && \
+    (HWY_COMPILER_GCC_ACTUAL && HWY_COMPILER_GCC_ACTUAL < 1600)
+// The N argument to TypeName from Lanes() is a "poly constant" which triggers
+// a GCC bug that can be worked around by disabling cloning. See #2813.
+#define HWY_TYPENAME_ATTR __attribute__((noclone))
+#else
+#define HWY_TYPENAME_ATTR
+#endif  // HWY_ARCH_ARM_A64 && HWY_COMPILER_GCC_ACTUAL
+
 // Returns a name for the vector/part/scalar. The type prefix is u/i/f for
 // unsigned/signed/floating point, followed by the number of bits per lane;
 // then 'x' followed by the number of lanes. Example: u8x16. This is useful for
 // understanding which instantiation of a generic test failed.
 template <typename T>
-std::string TypeName(T /*unused*/, size_t N) {
+HWY_TYPENAME_ATTR std::string TypeName(T /*unused*/, size_t N) {
   char string100[100];
   detail::TypeName(detail::MakeTypeInfo<T>(), N, string100);
   return string100;
@@ -244,6 +273,57 @@ HWY_INLINE void AssertArrayEqual(const T* expected, const T* actual,
                            line);
 }
 
+namespace internal {
+// Compare with tolerance due to FMA and f16 precision.
+template <typename T>
+HWY_INLINE bool CompareArraySimilarAndMaybeAbort(const T* expected,
+                                                 const T* actual, size_t count,
+                                                 double tolerance,
+                                                 const char* target_name,
+                                                 const char* filename, int line,
+                                                 bool abort_if_mismatch) {
+  for (size_t i = 0; i < count; ++i) {
+    const double exp = ConvertScalarTo<double>(expected[i]);
+    const double act = ConvertScalarTo<double>(actual[i]);
+    const double l1 = ScalarAbs(act - exp);
+    // Cannot divide, so check absolute error.
+    if (exp == 0.0) {
+      if (l1 > tolerance) {
+        std::string array_values =
+            detail::FormatMismatchedArrays(expected, actual, count, tolerance);
+        if (abort_if_mismatch) {
+          HWY_ABORT("%s %s:%d %s mismatch %zu of %zu: %E %E l1 %E tol %E%s\n",
+                    target_name, filename, line, TypeName(T(), 1).c_str(), i,
+                    count, exp, act, l1, tolerance, array_values.c_str());
+        } else {
+          HWY_WARN("%s %s:%d %s mismatch %zu of %zu: %E %E l1 %E tol %E%s\n",
+                   target_name, filename, line, TypeName(T(), 1).c_str(), i,
+                   count, exp, act, l1, tolerance, array_values.c_str());
+        }
+        return false;
+      }
+    } else {  // relative
+      const double rel = l1 / exp;
+      if (rel > tolerance) {
+        std::string array_values =
+            detail::FormatMismatchedArrays(expected, actual, count, tolerance);
+        if (abort_if_mismatch) {
+          HWY_ABORT("%s %s:%d %s mismatch %zu of %zu: %E %E rel %E tol %E%s\n",
+                    target_name, filename, line, TypeName(T(), 1).c_str(), i,
+                    count, exp, act, rel, tolerance, array_values.c_str());
+        } else {
+          HWY_WARN("%s %s:%d %s mismatch %zu of %zu: %E %E rel %E tol %E%s\n",
+                   target_name, filename, line, TypeName(T(), 1).c_str(), i,
+                   count, exp, act, rel, tolerance, array_values.c_str());
+        }
+        return false;
+      }
+    }
+  }
+  return true;
+}
+}  // namespace internal
+
 // Compare with tolerance due to FMA and f16 precision.
 template <typename T>
 HWY_INLINE void AssertArraySimilar(const T* expected, const T* actual,
@@ -252,26 +332,19 @@ HWY_INLINE void AssertArraySimilar(const T* expected, const T* actual,
   const double tolerance =
       (hwy::IsSame<RemoveCvRef<T>, float16_t>() ? 128.0 : 1.0) /
       (uint64_t{1} << MantissaBits<T>());
-  for (size_t i = 0; i < count; ++i) {
-    const double exp = ConvertScalarTo<double>(expected[i]);
-    const double act = ConvertScalarTo<double>(actual[i]);
-    const double l1 = ScalarAbs(act - exp);
-    // Cannot divide, so check absolute error.
-    if (exp == 0.0) {
-      if (l1 > tolerance) {
-        HWY_ABORT("%s %s:%d %s mismatch %zu of %zu: %E %E l1 %E tol %E\n",
-                  target_name, filename, line, TypeName(T(), 1).c_str(), i,
-                  count, exp, act, l1, tolerance);
-      }
-    } else {  // relative
-      const double rel = l1 / exp;
-      if (rel > tolerance) {
-        HWY_ABORT("%s %s:%d %s mismatch %zu of %zu: %E %E rel %E tol %E\n",
-                  target_name, filename, line, TypeName(T(), 1).c_str(), i,
-                  count, exp, act, rel, tolerance);
-      }
-    }
-  }
+
+  (void)internal::CompareArraySimilarAndMaybeAbort(
+      expected, actual, count, tolerance, target_name, filename, line, true);
+}
+
+// Compare with tolerance due to FMA and f16 precision.
+template <typename T>
+HWY_INLINE bool CompareArraySimilar(const T* expected, const T* actual,
+                                    size_t count, double tolerance,
+                                    const char* target_name,
+                                    const char* filename, int line) {
+  return internal::CompareArraySimilarAndMaybeAbort(
+      expected, actual, count, tolerance, target_name, filename, line, false);
 }
 
 }  // namespace hwy
