@@ -171,7 +171,8 @@ upper 16 bits of an IEEE binary32 float) only support load, store, and
 conversion to/from `float32_t`. The behavior of infinity and NaN in `float16_t`
 is implementation-defined due to Armv7. To ensure binary compatibility, these
 types are always wrapper structs and cannot be initialized with values directly.
-You can initialize them via `BitCastScalar` or `ConvertScalarTo`.
+You can convert these values from/to float using `ConvertScalarTo`, or from/to
+their underlying bit representation using `BitCastScalar`.
 
 On RVV/SVE, vectors are sizeless and cannot be wrapped inside a class. The
 Highway API allows using built-in types as vectors because operations are
@@ -1304,6 +1305,9 @@ them from 2-argument functions:
 *   <code>V **Or3**(V o1, V o2, V o3)</code>: returns `o1[i] | o2[i] | o3[i]`.
     This is less efficient than `Xor3` on some targets; use that where possible.
 *   <code>V **OrAnd**(V o, V a1, V a2)</code>: returns `o[i] | (a1[i] & a2[i])`.
+*   <code>V **XorAndNot**(V x, V a1, V a2)</code>: returns `x[i] ^ (~a1[i] &
+    a2[i])`. This is useful for conditionally flipping bits.
+
 *   <code>V **BitwiseIfThenElse**(V mask, V yes, V no)</code>: returns
     `((mask[i] & yes[i]) | (~mask[i] & no[i]))`. `BitwiseIfThenElse` is
     equivalent to, but potentially more efficient than `Or(And(mask, yes),
@@ -1387,6 +1391,11 @@ encoding depends on the platform).
     `MaskFalse(D())` is also equivalent to `FirstN(D(), 0)` or
     `Dup128MaskFromMaskBits(D(), 0)`, but `MaskFalse(D())` is usually more
     efficient.
+
+*   <code>M **SetMask**(D, bool val)</code>: equivalent to
+    `RebindMask(d, MaskFromVec(Set(RebindToSigned<D>(),
+    -static_cast<MakeSigned<TFromD<D>>>(val))))`,
+    but `SetMask(d, val)` is usually more efficient.
 
 #### Convert mask
 
@@ -2641,22 +2650,27 @@ The following `ReverseN` must not be called if `Lanes(D()) < N`:
     blocks are taken from `a` and the even blocks from `b`. Returns `b` if the
     vector has no more than one block (i.e. is 128 bits or scalar).
 
+The following ops are undefined for vectors with less than two blocks; callers
+must first check `Lanes` before calling these ops:
+
 *   <code>V **SwapAdjacentBlocks**(V v)</code>: returns a vector where blocks of
-    index `2*i` and `2*i+1` are swapped. Results are undefined for vectors with
-    less than two blocks; callers must first check that via `Lanes`. Only
-    available if `HWY_TARGET != HWY_SCALAR`.
+    index `2*i` and `2*i+1` are swapped.
 
-*   <code>V **InterleaveEvenBlocks**(D, V a, V b)</code>: returns alternating
-    blocks: first/lowest the first from A, then the first from B, then the third
-    from A etc. Results are undefined for vectors with less than two blocks;
-    callers must first check that via `Lanes`. Only available if `HWY_TARGET !=
-    HWY_SCALAR`.
+*   <code>V **InterleaveEvenBlocks**(D, V a, V b)</code>: returns blocks,
+    first/lowest the first from A, then the first from B, then the third from A,
+    then the third from B, etc.
 
-*   <code>V **InterleaveOddBlocks**(D, V a, V b)</code>: returns alternating
-    blocks: first/lowest the second from A, then the second from B, then the
-    fourth from A etc. Results are undefined for vectors with less than two
-    blocks; callers must first check that via `Lanes`. Only available if
-    `HWY_TARGET != HWY_SCALAR`.
+*   <code>V **InterleaveOddBlocks**(D, V a, V b)</code>: returns blocks,
+    first/lowest the second from A, then the second from B, then the fourth from
+    A, the fourth from B, etc.
+
+*   <code>V **InterleaveLowerBlocks**(D, V a, V b)</code>: returns blocks,
+    first/lowest the first from A, then the first from B, then the next from A,
+    then the next from B, etc.
+
+*   <code>V **InterleaveUpperBlocks**(D, V a, V b)</code>: returns blocks,
+    first/lowest the first in the upper half of A, then the first in the upper
+    half of B, then the next highest from A, then the next highest from B, etc.
 
 ### Reductions
 
@@ -2797,6 +2811,12 @@ instead of `HWY_HAVE_FLOAT64`, which describes the current target.
 
 *   `HWY_IDE` is 0 except when parsed by IDEs; adding it to conditions such as
     `#if HWY_TARGET != HWY_SCALAR || HWY_IDE` avoids code appearing greyed out.
+    \
+    Note for clangd users:
+    [there are no predefined macros in clangd](https://github.com/clangd/clangd/issues/581),
+    so you must manually add `__CLANGD__` macro so we can detect the presence of
+    clangd. This can be easily done by adding these two lines to your project's
+    `.clangd` file: `CompileFlags: Add: [-D__CLANGD__]`
 
 The following indicate full support for certain lane types and expand to 1 or 0.
 
@@ -2846,12 +2866,23 @@ supported for the `HWY_SCALAR` target.
     corresponding mask element is false. This is the case on ASAN/MSAN builds,
     AMD x86 prior to AVX-512, and Arm NEON. If so, users can prevent faults by
     ensuring memory addresses are aligned to the vector size or at least padded
-    (allocation size increased by at least `Lanes(d)`).
+    (allocation size increased by at least `Lanes(d)`). Note that `LoadN` and
+    `StoreN` never fault, regardless of the value of this macro.
 
 *   `HWY_NATIVE_FMA` expands to 1 if the `MulAdd` etc. ops use native fused
     multiply-add for floating-point inputs. Otherwise, `MulAdd(f, m, a)` is
     implemented as `Add(Mul(f, m), a)`. Checking this can be useful for
     increasing the tolerance of expected results (around 1E-5 or 1E-6).
+
+*   `HWY_NATIVE_MASK` expands to 1 if the `Masked*` etc. ops use native masking.
+    If so, the masking is zero-cost, otherwise they typically involve an extra
+    AND operation.
+
+*   `HWY_NATIVE_DOT_BF16` expands to 1 if `ReorderWidenMulAccumulate` uses a
+    native instruction rather than masking and f32 `MulAdd`.
+
+*   `HWY_NATIVE_INTERLEAVE_WHOLE` expands to 1 if `InterleaveWholeLower/Upper`
+    are at least as efficient as `InterleaveLower/Upper`.
 
 *   `HWY_IS_LITTLE_ENDIAN` expands to 1 on little-endian targets and to 0 on
     big-endian targets.
@@ -2859,9 +2890,15 @@ supported for the `HWY_SCALAR` target.
 *   `HWY_IS_BIG_ENDIAN` expands to 1 on big-endian targets and to 0 on
     little-endian targets.
 
-The following were used to signal the maximum number of lanes for certain
-operations, but this is no longer necessary (nor possible on SVE/RVV), so they
-are DEPRECATED:
+*   `HWY_MAX_BYTES` is an upper bound on the size of a full vector, suitable for
+    use in `#if` expressions. Except for the `HWY_SCALAR` target, it is equal to
+    the vector size if `!HWY_HAVE_SCALABLE`.
+
+*   `HWY_MIN_BYTES` is a lower bound on the size of a full vector, suitable for
+    use in `#if` expressions. Except for the `HWY_SCALAR` target, it is equal to
+    the vector size if `!HWY_HAVE_SCALABLE`.
+
+The following are DEPRECATED in favor of `HWY_MIN_BYTES`:
 
 *   `HWY_CAP_GE256`: the current target supports vectors of >= 256 bits.
 *   `HWY_CAP_GE512`: the current target supports vectors of >= 512 bits.
@@ -2932,6 +2969,15 @@ may also be defined even if one of `HWY_COMPILE_ONLY_*` is, but will then be
 ignored because the flags are tested in the order listed. As an exception,
 `HWY_SKIP_NON_BEST_BASELINE` overrides the effect of
 `HWY_COMPILE_ALL_ATTAINABLE` and `HWY_IS_TEST`.
+
+As a workaround, you can define `HWY_DISABLE_ATTR` to prevent `HWY_ATTR` and
+`HWY_BEFORE_NAMESPACE` from attaching target attributes to functions. This is
+useful for older GCC on POWER targets. For example, the `-mcpu=power10` flag
+conflicts with our attributes. Unlike most other platforms, POWER has some
+'inverted' attributes that take away features rather than adding.
+`HWY_DISABLE_ATTR` prevents the resulting inlining error; GCC 13 also appears to
+fix the issue. When specifying this, you must also pass all `-m` compiler flags
+required for any targets that the above `HWY_COMPILE_*` policies enable.
 
 ## Compiler support
 
